@@ -1,87 +1,22 @@
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>遠端中文拔河賽</title>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <style>
-        body { font-family: sans-serif; margin: 0; background: #eef2f3; text-align: center; overflow: hidden; }
-        #setup, #game, #result { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-        .btn { padding: 15px 30px; font-size: 20px; border-radius: 12px; border: none; cursor: pointer; margin: 10px; color: white; transition: 0.2s; }
-        .dolphin-btn { background: #3498db; }
-        .cat-btn { background: #e67e22; }
-        
-        /* 拔河區 */
-        .rope-container { width: 90%; height: 120px; position: relative; border-bottom: 2px solid #999; margin: 20px 0; }
-        #rope { position: absolute; width: 100%; height: 8px; background: #7f8c8d; top: 70px; transition: 0.5s ease-out; }
-        #knot { position: absolute; width: 20px; height: 20px; background: red; left: 50%; top: -6px; border-radius: 50%; transform: translateX(-50%); }
-        .team-icon { position: absolute; font-size: 40px; top: -50px; }
-        #icon-left { left: 10px; } #icon-right { right: 10px; }
-
-        .question { font-size: 24px; font-weight: bold; margin: 20px; padding: 15px; background: white; border-radius: 10px; width: 80%; }
-        .options { display: flex; gap: 20px; }
-        .opt { padding: 20px 40px; font-size: 24px; background: white; border: 2px solid #333; border-radius: 10px; }
-        .score-board { display: flex; gap: 50px; font-size: 18px; font-weight: bold; }
-        #timer { font-size: 30px; color: #c0392b; margin-top: 10px; }
-        #waiting { font-style: italic; color: #7f8c8d; }
-    </style>
-</head>
-<body>
-
-<div id="setup">
-    <h2>選擇你的隊伍</h2>
-    <button class="btn dolphin-btn" onclick="chooseTeam('dolphin')">我是 海豚隊 🐬</button>
-    <button class="btn cat-btn" onclick="chooseTeam('cat')">我是 小貓隊 🐱</button>
-    <p id="waiting">等待另一位玩家加入後即可開始...</p>
-</div>
-
-<div id="game" style="display:none;">
-    <div class="score-board">
-        <div style="color:#3498db">🐬: <span id="s-dolphin">0</span></div>
-        <div id="timer">90</div>
-        <div style="color:#e67e22">🐱: <span id="s-cat">0</span></div>
-    </div>
-
-    <div class="rope-container">
-        <div id="rope">
-            <span id="icon-left">🐬</span>
-            <div id="knot"></div>
-            <span id="icon-right">🐱</span>
-        </div>
-    </div>
-
-    <div class="question" id="q-text">載入題目中...</div>
-    <div class="options">
-        <button class="opt" id="opt0" onclick="check(0)"></button>
-        <button class="opt" id="opt1" onclick="check(1)"></button>
-    </div>
-</div>
-
-<div id="result" style="display:none;">
-    <h1 id="winner"></h1>
-    <button class="btn" style="background:#2ecc71" onclick="location.reload()">再玩一次</button>
-</div>
-
-<script>
-// --- 請把下方的 Config 換成你自己的 ---
+// --- 請確保下方的 Config 資訊正確 ---
 const firebaseConfig = {
-    apiKey: "你的API_KEY",
-    authDomain: "你的專案ID.firebaseapp.com",
-    databaseURL: "https://你的專案ID-default-rtdb.firebaseio.com",
-    projectId: "你的專案ID",
-    storageBucket: "你的專案ID.appspot.com",
-    messagingSenderId: "你的發送ID",
-    appId: "你的APP_ID"
+  apiKey: "AIzaSyBdbcy2tfTiF3_3JTwO8tuTbAakJny62Ak",
+  authDomain: "tug-of-war-b417b.firebaseapp.com",
+  projectId: "tug-of-war-b417b",
+  databaseURL: "https://tug-of-war-b417b-default-rtdb.firebaseio.com", // 這裡通常是自動產生的，請檢查你的資料庫網址
+  storageBucket: "tug-of-war-b417b.appspot.com",
+  messagingSenderId: "993730714949",
+  appId: "1:993730714949:web:3a4d3f2e0b926825de322c"
 };
-// -------------------------------------
 
-firebase.initializeApp(firebaseConfig);
+// 初始化 Firebase
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
 const db = firebase.database().ref('tugGame');
 
 let myRole = '';
-let questions = [];
+let currentCorrectIdx = 0;
 const bank = [
     {q: "這件事情還（ ）完成。", a: "未", b: "末", r: 0},
     {q: "這是一年之（ ）。", a: "未", b: "末", r: 1},
@@ -120,10 +55,11 @@ function chooseTeam(team) {
     document.getElementById('setup').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
     
-    // 如果是第一個進來的，重設遊戲
+    // 如果選海豚（假設是房主），初始化遊戲
     if (team === 'dolphin') {
         db.set({
-            scoreD: 0, scoreC: 0,
+            scoreD: 0, 
+            scoreC: 0,
             currentQ: 0,
             timer: 90,
             status: 'playing',
@@ -135,27 +71,6 @@ function chooseTeam(team) {
 
 function startTimer() {
     let t = 90;
-    // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyBdbcy2tfTiF3_3JTwO8tuTbAakJny62Ak",
-  authDomain: "tug-of-war-b417b.firebaseapp.com",
-  projectId: "tug-of-war-b417b",
-  storageBucket: "tug-of-war-b417b.firebasestorage.app",
-  messagingSenderId: "993730714949",
-  appId: "1:993730714949:web:3a4d3f2e0b926825de322c",
-  measurementId: "G-NFC4D3EHTD"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
     let timerId = setInterval(() => {
         t--;
         db.update({ timer: t });
@@ -169,24 +84,24 @@ const analytics = getAnalytics(app);
 // 監聽雲端資料
 db.on('value', (snap) => {
     const data = snap.val();
-    if (!data) return;
+    if (!data || !data.qs) return;
 
     document.getElementById('s-dolphin').innerText = data.scoreD;
     document.getElementById('s-cat').innerText = data.scoreC;
     document.getElementById('timer').innerText = data.timer;
 
-    // 繩子邏輯 (50% 是中心，分差 * 5% 位移)
+    // 繩子邏輯 (位移計算)
     let offset = (data.scoreD - data.scoreC) * 5;
-    document.getElementById('rope').style.transform = `translateX(${offset}%)`;
+    document.getElementById('rope').style.left = `${offset}%`;
 
-    if (data.status === 'ended' || data.currentQ >= 30) {
+    if (data.status === 'ended' || data.currentQ >= data.qs.length) {
         showResult(data);
     } else {
         const q = data.qs[data.currentQ];
         document.getElementById('q-text').innerText = q.q;
         document.getElementById('opt0').innerText = q.a;
         document.getElementById('opt1').innerText = q.b;
-        window.correctIdx = q.r;
+        currentCorrectIdx = q.r;
     }
 });
 
@@ -194,7 +109,8 @@ function check(idx) {
     db.once('value', (snap) => {
         const data = snap.val();
         let up = { currentQ: data.currentQ + 1 };
-        if (idx === window.correctIdx) {
+        
+        if (idx === currentCorrectIdx) {
             if (myRole === 'dolphin') up.scoreD = data.scoreD + 1;
             else up.scoreC = data.scoreC + 1;
         } else {
@@ -209,9 +125,8 @@ function check(idx) {
 function showResult(data) {
     document.getElementById('game').style.display = 'none';
     document.getElementById('result').style.display = 'flex';
-    let msg = data.scoreD > data.scoreC ? "🐬 海豚隊 勝利！" : (data.scoreC > data.scoreD ? "🐱 小貓隊 勝利！" : "雙方平手！");
+    let msg = "平手！";
+    if (data.scoreD > data.scoreC) msg = "🐬 海豚隊 勝利！";
+    else if (data.scoreC > data.scoreD) msg = "🐱 小貓隊 勝利！";
     document.getElementById('winner').innerText = msg;
 }
-</script>
-</body>
-</html>
