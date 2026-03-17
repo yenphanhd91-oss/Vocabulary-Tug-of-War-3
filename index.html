@@ -156,6 +156,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
+    let timerId = setInterval(() => {
         t--;
         db.update({ timer: t });
         if (t <= 0) {
